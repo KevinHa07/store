@@ -1,0 +1,158 @@
+package OnlineStore;
+
+import java.io.IOException;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.servlet.ServletConfig;
+import javax.servlet.ServletContext;
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import com.mysql.jdbc.Connection;
+import com.mysql.jdbc.PreparedStatement;
+import com.mysql.jdbc.Statement;
+
+
+
+
+
+@WebServlet("/Checkout")
+public class Checkout extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+	
+	static long orderNumber = 10000;
+	
+	public void init( ServletConfig config ) throws ServletException
+    {
+        super.init( config );
+
+        try
+        {
+            Class.forName( "com.mysql.jdbc.Driver" );
+        }
+        catch( ClassNotFoundException e )
+        {
+            throw new ServletException( e );
+        }
+       
+    }
+	
+	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		ServletContext context = this.getServletContext();
+		List<inventoryEntry> shoppingcart = (List<inventoryEntry>) context.getAttribute("shoppingcart");
+		
+		
+		//displays checkout page
+		request.getRequestDispatcher( "/WEB-INF/Checkout.jsp" ).forward(request, response);
+	}
+
+	/**
+	 * @see HttpServlet#doPost(HttpServletRequest request, HttpServletResponse response)
+	 */
+	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		ServletContext context = this.getServletContext();
+		List<inventoryEntry> shoppingcart = (List<inventoryEntry>) context.getAttribute("shoppingcart");
+		
+		boolean userNameHasError = false;
+		boolean emailHasError = false;
+		//validate username and email
+		if(request.getParameter("username").trim().length() > 0 && request.getParameter("username") != null && request.getParameter("email")!= null && request.getParameter("email").trim().length() > 0){
+			String userName = request.getParameter("username");
+			String[] fullName = userName.split(" ");
+			try{
+				String firstName = fullName[0];
+				String lastName = fullName[1];
+				if(firstName.trim().length() <= 0 || lastName.trim().length() <= 0 || firstName == null || lastName == null){
+					userNameHasError = true;
+					request.setAttribute("userNameHasError", userNameHasError);
+					doGet(request, response);
+				}
+			}catch(ArrayIndexOutOfBoundsException e){
+				userNameHasError = true;
+				request.setAttribute("userNameHasError", userNameHasError);
+				doGet(request, response);
+			}
+			
+			String regex = "^[\\w-_\\.+]*[\\w-_\\.]\\@([\\w]+\\.)+[\\w]+[\\w]$";	//Got this line of code from tutorial point to validate email
+			String userEmail = request.getParameter("email");
+			if(!userEmail.matches(regex)){
+				emailHasError = true;
+				request.setAttribute("emailHasError", emailHasError);
+				doGet(request, response);
+			}
+			Connection c = null;
+	        try
+	        {
+	            String url = "jdbc:mysql://cs3.calstatela.edu:3306/cs3220stu70";
+	            String username = "cs3220stu70";
+	            String password = "812!xL1B";
+
+	            c = (Connection) DriverManager.getConnection( url, username, password );
+	            Statement stmt = (Statement) c.createStatement();
+	            ResultSet rs = stmt.executeQuery( "select * from inventory" );
+	            while( rs.next() )
+	            {
+	            	for(int i = 0; i < shoppingcart.size() - 1; i++){
+	            		//see if id of items are the same
+	            		if(shoppingcart.get(i).id == rs.getInt("id")){
+	            			int stock = rs.getInt("quantity");	//stock in inventory
+	            			int quantity = shoppingcart.get(i).getQuantity();	//quantity in shopping cart
+	            			int stockLeft = stock - quantity;	//stock left after
+	            			if(stockLeft < 0){	//if somehow stock is less than zero, set stock to zero
+	            				stockLeft = 0;
+	            			}
+	            			//updates the database with the remaining stock
+	            			PreparedStatement ps = (PreparedStatement) c.prepareStatement("update inventory set quantity= " + stockLeft + " where id=" + rs.getInt("id") + "");
+	        	            ps.executeUpdate();
+	        	            
+	        	            //archive items into transaction database
+	        	            //ps = (PreparedStatement) c.prepareStatement("insert into transaction (name, description, quantity, price, id) values ('" + rs.getString("name") + "', '" + rs.getString("description") + "', " + quantity + ", " + rs.getDouble("price") + ", " + rs.getInt("id") + ")");
+	        	            //ps.executeUpdate();
+	            		}
+	            	}
+	            	
+	            }
+	            //set request parameter for jsp to display message that order is complete.
+	            request.setAttribute("orderComplete", true);
+	            
+	            request.setAttribute("orderNumber", orderNumber);
+	            orderNumber++;
+	            doGet(request, response);
+	            
+	        }
+	        catch( SQLException e )
+	        {
+	            throw new ServletException( e );
+	        }
+	        finally
+	        {
+	            try
+	            {
+	                if( c != null ) c.close();
+	            }
+	            catch( SQLException e )
+	            {
+	                throw new ServletException( e );
+	            }
+	        }
+		}
+		else{
+			userNameHasError = true;
+			request.setAttribute("userNameHasError", userNameHasError);
+			emailHasError = true;
+			request.setAttribute("emailHasError", emailHasError);
+			doGet(request, response);
+		}
+		
+		
+		doGet(request, response);
+	}
+
+}
